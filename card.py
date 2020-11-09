@@ -10,10 +10,10 @@ SUITS_STR = ['hearts', 'diamonds', 'clubs', 'spades']
 RANKS_STR = ['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'jack', 'queen', 'king', 'ace']
 
 def get_suit(card):
-    return (card-1) % 4
+    return (card - 1) % 4
 
 def get_rank(card):
-    return ((card -1) // 4) % 13
+    return (card - 1) // 4
 
 def same_rank(card1, card2):
     return get_rank(card1) == get_rank(card2)

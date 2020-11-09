@@ -1,8 +1,8 @@
 from card import *
 from arrangement import *
-from random import shuffle
+from random import seed, shuffle
 from collections import defaultdict
-
+#seed(1337)
 MAX_NUM_TURNS_PER_PLAYER = 3000
 
 def calculate_winner(points):
@@ -122,7 +122,7 @@ def main(players, display_gui):
 
         cur_player = 0
         num_turns_this_round = 0
-        while True: # give each person a turn until roound ends
+        while True: # give each person a turn until round ends
             #print("Stock", hand_to_string(stock))
             #print("Discard pile", hand_to_string(discard_pile))
             
@@ -134,12 +134,12 @@ def main(players, display_gui):
                 print("Number of turns exceeded limit, ending round due to timeout.")
                 break
             
-            print("\n\nRound", rnd, "turn", num_turns_this_round)
+            print("\n\nRound", rnd, "turn", num_turns_this_round, "(wildcard: " + RANKS_STR[wildcard_rank] + ")")
             player_won = player_turn(players[cur_player], player_names[cur_player], cur_player, hands[cur_player], discard_pile, stock, winning_player, picked_up_discard_cards, wildcard_rank, num_turns_this_round)
-            input("End of turn. Press [return] to continue.")
+            #input("End of turn. Press [return] to continue.")
             if display_gui:
                 gui.display(screen, hands, discard_pile[-1], total_scores)
-            if player_won:
+            if player_won and winning_player == -1: # player arranged all their cards and no one has gone out yet
                 print("Player has gone out. Giving everyone a final turn.")
                 hands[cur_player] = []
                 winning_player = cur_player # end the game at the winning player's next turn
