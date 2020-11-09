@@ -73,6 +73,7 @@ def is_valid_sequence(cards, wildcard_rank):
     if (tuple(cards), wildcard_rank) not in valid_sequences:
         result = True
         
+        cards = cards[:]
         num_wildcards = 0
         for i in range(len(cards)-1, -1, -1):
             card = cards[i]

@@ -16,7 +16,7 @@ def discard(hand, last_turn, picked_up_discard_cards, player_position, wildcard_
     ind = -1
     while ind < 0 or ind >= len(hand):
         ind = input("Enter the index of the card to discard: ")
-        if ind <= '0' or ind >= '9':
+        if not ind.isdecimal():
             continue
         ind = int(ind)
     return hand[ind]
