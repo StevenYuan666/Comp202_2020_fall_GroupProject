@@ -1,4 +1,5 @@
 import math
+import doctest
 from card import *
 from collections import Counter
 from itertools import chain, combinations
@@ -27,6 +28,18 @@ def is_valid_arrangement(arrangement, hand, wildcard_rank):
     
     return equal_occurrences(hand, cards)
 
+def remove_wildcards_from_hand(hand, wildcard_rank):
+    """ (list<Card>, RANK) -> int
+    Removes all wildcards from the hand and returns the number of wildcards removed.
+    """
+    num_wildcards = 0
+    for i in range(len(hand)-1, -1, -1):
+        card = hand[i]
+        if get_rank(card) == wildcard_rank:
+            num_wildcards += 1
+            hand.remove(card)
+    return num_wildcards
+
 valid_groups = dict()
 def is_valid_group(cards, wildcard_rank):
     """ (tuple<Card>, int) -> bool
@@ -41,19 +54,39 @@ def is_valid_group(cards, wildcard_rank):
     False
     >>> is_valid_group([get_card(HEARTS, TWO), get_card(CLUBS, TWO), get_card(SPADES, KING)], KING)
     True
+    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, FOUR), get_card(SPADES, FOUR)], THREE)
+    True
+    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, FOUR), get_card(SPADES, FOUR)], FOUR)
+    True
+    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, THREE), get_card(SPADES, THREE), get_card(DIAMONDS, THREE)], FOUR)
+    True
+    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, THREE), get_card(SPADES, THREE), get_card(DIAMONDS, THREE), get_card(CLUBS, FOUR)], FOUR)
+    True
     """
-    assert type(cards) is tuple
+    if type(cards) is not tuple:
+        cards = tuple(cards)
+
     if len(cards) < 3:
         return False
 
     if (cards, wildcard_rank) not in valid_groups:
-        group_rank = get_rank(cards[0])
+        cards_list = list(cards)
         result = True
-        for card in cards[1:]:
-            card_rank = get_rank(card)
-            if card_rank != group_rank and card_rank != wildcard_rank:
-                result = False
-                break
+        
+        num_wildcards = remove_wildcards_from_hand(cards_list, wildcard_rank)
+        if len(cards) == num_wildcards:
+            result = True
+        else:
+            assert len(cards_list) >= 3-num_wildcards
+            cards_list.sort()
+        
+            group_rank = get_rank(cards_list[0])
+            for card in cards_list[1:]:
+                card_rank = get_rank(card)
+                assert card_rank != wildcard_rank
+                if card_rank != group_rank:
+                    result = False
+                    break
         valid_groups[(cards, wildcard_rank)] = result
     
     return valid_groups[(cards, wildcard_rank)]
@@ -64,29 +97,45 @@ def is_valid_sequence(cards, wildcard_rank):
     Checks if the given list of cards forms a valid sequence.
     A sequence is a set of three or more cards of the same suit with consecutive rank.
     A wildcard (card of the given wildcard rank) can fit in any sequence.
+    >>> is_valid_sequence([], KING)
+    False
     >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, FOUR)], KING)
     True
     >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, TEN)], KING)
     False
-    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, TEN)], TEN)
-    True # the ten will become a four as it is a wildcard
-    >>> is_valid_sequence([])
+    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, FOUR), get_card(HEARTS, TEN)], TEN)
+    True
+    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, FIVE), get_card(HEARTS, TEN)], TEN)
     False
+    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, TEN)], TEN)
+    True
+    >>> is_valid_sequence([get_card(SPADES, THREE), get_card(SPADES, JACK), get_card(SPADES, KING)], THREE)
+    True
+    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK)], THREE)
+    False
+    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK)], JACK)
+    True
+    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK), get_card(CLUBS, KING)], JACK)
+    False
+    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK), get_card(CLUBS, QUEEN)], JACK)
+    True
     """
-    assert type(cards) is tuple
+    if type(cards) is not tuple:
+        cards = tuple(cards)
+    
+    if len(cards) < 3:
+        return False
+    
     if (cards, wildcard_rank) not in valid_sequences:
         cards_list = list(cards)
         result = True
+        cards_list.sort()
         
-        num_wildcards = 0
-        for i in range(len(cards_list)-1, -1, -1):
-            card = cards_list[i]
-            if get_rank(card) == wildcard_rank:
-                num_wildcards += 1
-                cards_list.remove(card)
-    
-        if len(cards_list) < 3-num_wildcards:
-            result = False
+        num_wildcards = remove_wildcards_from_hand(cards_list, wildcard_rank)
+        assert len(cards_list) >= 3-num_wildcards
+        
+        if len(cards) == num_wildcards:
+            result = True
         elif not all_same_suit(cards_list):
             result = False
         else:
@@ -94,10 +143,17 @@ def is_valid_sequence(cards, wildcard_rank):
             i = 1
             gaps = 0
             while i < len(cards_list):
+                if get_rank(cards_list[i]) == get_rank(cards_list[i-1]):
+                    # can't have two cards of same rank in a sequence if they are not wildcards
+                    result = False
+                    break
                 if get_rank(cards_list[i]) != get_rank(cards_list[i-1])+1:
-                    gaps += (get_rank(cards_list[i]) - get_rank(cards_list[i-1])) + 1
+                    gaps += (get_rank(cards_list[i]) - get_rank(cards_list[i-1])) - 1
                 i += 1
-            result = gaps <= num_wildcards # check if we can fill the gaps with wildcards
+            
+            if result:
+                result = gaps <= num_wildcards # check if we can fill the gaps with wildcards
+        
         valid_sequences[(cards, wildcard_rank)] = result
     
     return valid_sequences[(cards, wildcard_rank)]
@@ -193,3 +249,6 @@ def get_arrangement(hand, wildcard_rank):
             
     best_arrangements[(hand_t, wildcard_rank)] = best_arrangement
     return best_arrangement
+
+if __name__ == "__main__": 
+    doctest.testmod()

@@ -79,6 +79,7 @@ def player_turn(player, player_name, player_index, hand, discard_pile, stock, wi
 
     # Step 3: Check if player has gone out
     arrangement = get_arrangement(hand[:], wildcard_rank)
+    #print("Best arrangement:", arrangement_to_string(arrangement))
     if is_valid_arrangement(arrangement, hand, wildcard_rank):
         print("Player announced they have gone out.")
         print("  Their hand contains:", hand_to_string(hand))
