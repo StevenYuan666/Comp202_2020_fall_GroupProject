@@ -1,8 +1,10 @@
 import math
 import doctest
 from card import *
-from collections import Counter
-from itertools import chain, combinations
+from functools import lru_cache
+from itertools import combinations
+
+LRU_CACHE_SIZE = 500
 
 def equal_occurrences(l1, l2):
     for x in l1:
@@ -18,7 +20,16 @@ def equal_occurrences(l1, l2):
             return False
     return True
 
+@lru_cache(maxsize=LRU_CACHE_SIZE)
 def is_valid_arrangement(arrangement, hand, wildcard_rank):
+    """ (tuple<Group/Sequence>, tuple<Card>, RANK) -> bool
+    
+    >>> hand = tuple([get_card(CLUBS, TWO), get_card(CLUBS, THREE), get_card(CLUBS, THREE), get_card(CLUBS, FIVE), get_card(SPADES, FIVE)])
+    >>> wildcard_rank = FIVE
+    >>> arrangement = get_arrangement(hand, wildcard_rank)
+    >>> is_valid_arrangement(arrangement, hand, wildcard_rank)
+    False
+    """
     cards = []
     for seq in arrangement:
         if not is_valid_group(seq, wildcard_rank) and not is_valid_sequence(seq, wildcard_rank):
@@ -28,135 +39,114 @@ def is_valid_arrangement(arrangement, hand, wildcard_rank):
     
     return equal_occurrences(hand, cards)
 
-def remove_wildcards_from_hand(hand, wildcard_rank):
-    """ (list<Card>, RANK) -> int
-    Removes all wildcards from the hand and returns the number of wildcards removed.
+@lru_cache(maxsize=2)
+def remove_wildcards_from_hand(hand, wildcard_rank, num_cards):
+    """ (tuple<Card>, RANK) -> (list<Card>, int)
+    Returns the hand without wildcards and returns the number of wildcards removed.
+    
+    >>> hand = tuple([get_card(SPADES, TWO), get_card(SPADES, THREE), get_card(SPADES, FOUR)])
+    >>> remove_wildcards_from_hand(hand, THREE, len(hand))
+    (1, [4, 12])
     """
-    num_wildcards = 0
-    for i in range(len(hand)-1, -1, -1):
-        card = hand[i]
-        if get_rank(card) == wildcard_rank:
-            num_wildcards += 1
-            hand.remove(card)
-    return num_wildcards
+    hand = [card for card in hand if card not in CARDS_OF_RANK[wildcard_rank]]
+    return (num_cards - len(hand), hand)
 
-valid_groups = dict()
+@lru_cache(maxsize=LRU_CACHE_SIZE)
 def is_valid_group(cards, wildcard_rank):
     """ (tuple<Card>, int) -> bool
     Checks if the given list of cards forms a valid group.
     A group is a set of three or more cards of the same rank.
     A wildcard (card of the given wildcard rank) can fit in any group.
-    >>> is_valid_group([get_card(HEARTS, TWO), get_card(HEARTS, TWO), get_card(CLUBS, TWO)], KING)
+    >>> is_valid_group(tuple([get_card(HEARTS, TWO), get_card(HEARTS, TWO), get_card(CLUBS, TWO)]), KING)
     True
-    >>> is_valid_group([get_card(HEARTS, FOUR), get_card(HEARTS, TWO), get_card(CLUBS, TWO)], KING)
+    >>> is_valid_group(tuple([get_card(HEARTS, FOUR), get_card(HEARTS, TWO), get_card(CLUBS, TWO)]), KING)
     False
-    >>> is_valid_group([get_card(HEARTS, TWO), get_card(CLUBS, TWO)], KING)
+    >>> is_valid_group(tuple([get_card(HEARTS, TWO), get_card(CLUBS, TWO)]), KING)
     False
-    >>> is_valid_group([get_card(HEARTS, TWO), get_card(CLUBS, TWO), get_card(SPADES, KING)], KING)
+    >>> is_valid_group(tuple([get_card(HEARTS, TWO), get_card(CLUBS, TWO), get_card(SPADES, KING)]), KING)
     True
-    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, FOUR), get_card(SPADES, FOUR)], THREE)
+    >>> is_valid_group(tuple([get_card(CLUBS, THREE), get_card(HEARTS, FOUR), get_card(SPADES, FOUR)]), THREE)
     True
-    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, FOUR), get_card(SPADES, FOUR)], FOUR)
+    >>> is_valid_group(tuple([get_card(CLUBS, THREE), get_card(HEARTS, FOUR), get_card(SPADES, FOUR)]), FOUR)
     True
-    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, THREE), get_card(SPADES, THREE), get_card(DIAMONDS, THREE)], FOUR)
+    >>> is_valid_group(tuple([get_card(CLUBS, THREE), get_card(HEARTS, THREE), get_card(SPADES, THREE), get_card(DIAMONDS, THREE)]), FOUR)
     True
-    >>> is_valid_group([get_card(CLUBS, THREE), get_card(HEARTS, THREE), get_card(SPADES, THREE), get_card(DIAMONDS, THREE), get_card(CLUBS, FOUR)], FOUR)
+    >>> is_valid_group(tuple([get_card(CLUBS, THREE), get_card(HEARTS, THREE), get_card(SPADES, THREE), get_card(DIAMONDS, THREE), get_card(CLUBS, FOUR)]), FOUR)
     True
+    >>> is_valid_group(tuple([get_card(CLUBS, TWO), get_card(CLUBS, THREE), get_card(CLUBS, THREE), get_card(CLUBS, FIVE), get_card(SPADES, FIVE)]), FIVE)
+    False
     """
-    if type(cards) is not tuple:
-        cards = tuple(cards)
-
-    if len(cards) < 3:
+    num_cards = len(cards)
+    if num_cards < 3:
         return False
-
-    if (cards, wildcard_rank) not in valid_groups:
-        cards_list = list(cards)
-        result = True
         
-        num_wildcards = remove_wildcards_from_hand(cards_list, wildcard_rank)
-        if len(cards) == num_wildcards:
-            result = True
-        else:
-            assert len(cards_list) >= 3-num_wildcards
-            cards_list.sort()
-        
-            group_rank = get_rank(cards_list[0])
-            for card in cards_list[1:]:
-                card_rank = get_rank(card)
-                assert card_rank != wildcard_rank
-                if card_rank != group_rank:
-                    result = False
-                    break
-        valid_groups[(cards, wildcard_rank)] = result
+    num_wildcards, cards_list = remove_wildcards_from_hand(cards, wildcard_rank, num_cards)
+    if num_cards == num_wildcards:
+        return True
     
-    return valid_groups[(cards, wildcard_rank)]
+    return all_same_rank(tuple(cards_list))
 
-valid_sequences = dict()
+@lru_cache(maxsize=LRU_CACHE_SIZE)
 def is_valid_sequence(cards, wildcard_rank):
     """ (tuple<Card>, int) -> bool
     Checks if the given list of cards forms a valid sequence.
     A sequence is a set of three or more cards of the same suit with consecutive rank.
     A wildcard (card of the given wildcard rank) can fit in any sequence.
-    >>> is_valid_sequence([], KING)
+    >>> is_valid_sequence(tuple([]), KING)
     False
-    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, FOUR)], KING)
+    >>> is_valid_sequence(tuple([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, FOUR)]), KING)
     True
-    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, TEN)], KING)
+    >>> is_valid_sequence(tuple([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, TEN)]), KING)
     False
-    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, FOUR), get_card(HEARTS, TEN)], TEN)
+    >>> is_valid_sequence(tuple([get_card(HEARTS, TWO), get_card(HEARTS, FOUR), get_card(HEARTS, TEN)]), TEN)
     True
-    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, FIVE), get_card(HEARTS, TEN)], TEN)
+    >>> is_valid_sequence(tuple([get_card(HEARTS, TWO), get_card(HEARTS, FIVE), get_card(HEARTS, TEN)]), TEN)
     False
-    >>> is_valid_sequence([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, TEN)], TEN)
+    >>> is_valid_sequence(tuple([get_card(HEARTS, TWO), get_card(HEARTS, THREE), get_card(HEARTS, TEN)]), TEN)
     True
-    >>> is_valid_sequence([get_card(SPADES, THREE), get_card(SPADES, JACK), get_card(SPADES, KING)], THREE)
+    >>> is_valid_sequence(tuple([get_card(SPADES, THREE), get_card(SPADES, JACK), get_card(SPADES, KING)]), THREE)
     True
-    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK)], THREE)
+    >>> is_valid_sequence(tuple([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK)]), THREE)
     False
-    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK)], JACK)
+    >>> is_valid_sequence(tuple([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK)]), JACK)
     True
-    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK), get_card(CLUBS, KING)], JACK)
+    >>> is_valid_sequence(tuple([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK), get_card(CLUBS, KING)]), JACK)
     False
-    >>> is_valid_sequence([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK), get_card(CLUBS, QUEEN)], JACK)
+    >>> is_valid_sequence(tuple([get_card(CLUBS, NINE), get_card(CLUBS, JACK), get_card(CLUBS, JACK), get_card(CLUBS, QUEEN)]), JACK)
     True
-    """
-    if type(cards) is not tuple:
-        cards = tuple(cards)
-    
-    if len(cards) < 3:
+    >>> is_valid_sequence(tuple([get_card(CLUBS, TWO), get_card(CLUBS, THREE), get_card(CLUBS, THREE)]), FIVE)
+    False
+    >>> is_valid_sequence(tuple([get_card(CLUBS, TWO), get_card(CLUBS, THREE), get_card(CLUBS, THREE), get_card(CLUBS, FIVE)]), FIVE)
+    False
+    >>> is_valid_sequence(tuple([get_card(CLUBS, TWO), get_card(CLUBS, THREE), get_card(CLUBS, THREE), get_card(CLUBS, FIVE), get_card(SPADES, FIVE)]), FIVE)
+    False
+    """    
+    num_cards = len(cards)
+    if num_cards < 3:
         return False
+        
+    num_wildcards, cards_list = remove_wildcards_from_hand(cards, wildcard_rank, num_cards)
+        
+    if num_cards == num_wildcards:
+        return True
     
-    if (cards, wildcard_rank) not in valid_sequences:
-        cards_list = list(cards)
-        result = True
-        cards_list.sort()
-        
-        num_wildcards = remove_wildcards_from_hand(cards_list, wildcard_rank)
-        assert len(cards_list) >= 3-num_wildcards
-        
-        if len(cards) == num_wildcards:
-            result = True
-        elif not all_same_suit(cards_list):
-            result = False
-        else:
-            # determine amount of gap in sequence, if any
-            i = 1
-            gaps = 0
-            while i < len(cards_list):
-                if get_rank(cards_list[i]) == get_rank(cards_list[i-1]):
-                    # can't have two cards of same rank in a sequence if they are not wildcards
-                    result = False
-                    break
-                if get_rank(cards_list[i]) != get_rank(cards_list[i-1])+1:
-                    gaps += (get_rank(cards_list[i]) - get_rank(cards_list[i-1])) - 1
-                i += 1
-            
-            if result:
-                result = gaps <= num_wildcards # check if we can fill the gaps with wildcards
-        
-        valid_sequences[(cards, wildcard_rank)] = result
+    if not all_same_suit(tuple(cards_list)):
+        return False
+
+    # determine amount of gap in sequence, if any
+    i = 1
+    gaps = 0
+    cards_list.sort()
+    num_cards = len(cards_list)
+    while i < num_cards:
+        if get_rank(cards_list[i]) == get_rank(cards_list[i-1]):
+            # can't have two cards of same rank in a sequence if they are not wildcards
+            return False
+        if get_rank(cards_list[i]) != get_rank(cards_list[i-1])+1:
+            gaps += (get_rank(cards_list[i]) - get_rank(cards_list[i-1])) - 1
+        i += 1
     
-    return valid_sequences[(cards, wildcard_rank)]
+    return gaps <= num_wildcards # check if we can fill the gaps with wildcards
 
 def arrangement_to_string(arrangement):
     s = ''
@@ -166,88 +156,92 @@ def arrangement_to_string(arrangement):
         i += 1
     return s
 
-occurrences = {}
-element_counts = {}
-nested_tuple_counts = {}
 def equal_or_less_occurrences(elements, nested_tuple):
-    if (elements, nested_tuple) not in occurrences:
-        result = True
-        if elements not in element_counts:
-            element_counts[elements] = Counter(elements)
-        if nested_tuple not in nested_tuple_counts:
-            nested_tuple_counts[nested_tuple] = Counter(chain(*nested_tuple))
-        
-        e_cts = element_counts[elements]
-        nt_cts = nested_tuple_counts[nested_tuple]
-        
-        if any(nt_cts[x] > e_cts[x] for x in elements):
-            result = False
-        
-        occurrences[(elements, nested_tuple)] = result
-    return occurrences[(elements, nested_tuple)]
+    for element in set(elements):
+        x_count = elements.count(element)
+        nested_count = 0
+        for tup in nested_tuple:
+            nested_count += tup.count(element)
+            if nested_count > x_count:
+                return False
+    return True
 
-def count_elements(nested_list):
-    num = 0
-    for x in nested_list:
-        for y in x:
-            num += 1
-    return num
-
-best_arrangements = {}
+@lru_cache(maxsize=LRU_CACHE_SIZE)
 def get_arrangement(hand, wildcard_rank):
-    if len(hand) < 3:
-        return []
+    """ (tuple<Card>, RANK) -> tuple<tuple<Card>>
     
-    hand = hand[:]
-    hand.sort()
-    hand_t = tuple(hand)
-    if (hand_t, wildcard_rank) in best_arrangements:
-        return best_arrangements[(hand_t, wildcard_rank)]
+    The two 3's and two wildcards will be put into a group of four Three's.
+    >>> hand = tuple([get_card(CLUBS, TWO), get_card(CLUBS, THREE), get_card(CLUBS, THREE), get_card(CLUBS, FIVE), get_card(SPADES, FIVE)])
+    >>> wildcard_rank = FIVE
+    >>> solution = ((get_card(CLUBS, THREE), get_card(CLUBS, THREE), get_card(CLUBS, FIVE), get_card(SPADES, FIVE)),)
+    >>> get_arrangement(hand, wildcard_rank) == solution
+    True
+    """
+    #print("is_valid_arrangement", is_valid_arrangement.cache_info())
+    #print("is_valid_group", is_valid_group.cache_info())
+    #print("is_valid_sequence", is_valid_sequence.cache_info())
+    #print("remove_wildcards_from_hand", remove_wildcards_from_hand.cache_info())
+    #print("get_arrangement", get_arrangement.cache_info())
+    len_hand = len(hand)
+    if len_hand < 3:
+        return []
     
     valid_combinations = set()
-    for group_length in range(3, len(hand)+1):
+    stop = False
+    for group_length in range(len_hand, 2, -1):
         for combination in combinations(hand, group_length):
-            if is_valid_group(combination, wildcard_rank) or is_valid_sequence(combination, wildcard_rank):
-                valid_combinations.add(combination)
-        
-    if len(valid_combinations) == 0:
-        best_arrangements[(hand_t, wildcard_rank)] = []
-        return []
+            if is_valid_sequence(combination, wildcard_rank) or is_valid_group(combination, wildcard_rank):
+                valid_combinations.add((combination, group_length))
+                if group_length == len_hand: # don't keep looking if we found a combo for entire hand
+                    stop = True
+                    break
+        if stop:
+            break
     
+    if len(valid_combinations) == 0:
+        return tuple()
+            
     # find optimal combination of groups and sequences
     cur_max_arrangements = []
     cur_max_arranged_cards = 0
-    max_possible_arrangements = min(len(valid_combinations), len(hand) // 3)
-    for num_sequences in range(max_possible_arrangements, -1, -1):
+    max_possible_arrangements = min(len(valid_combinations), len_hand // 3)
+    for num_sequences in range(max_possible_arrangements, 0, -1):
         for arrangement in combinations(valid_combinations, num_sequences):
-            if arrangement not in cur_max_arrangements and equal_or_less_occurrences(hand_t, arrangement):
-                num_cards_in_sequence = count_elements(arrangement)
-                if num_cards_in_sequence > cur_max_arranged_cards:
-                    cur_max_arranged_cards = num_cards_in_sequence
-                    cur_max_arrangements = [arrangement]
-                elif num_cards_in_sequence == cur_max_arranged_cards:
-                    cur_max_arrangements.append(arrangement)
-    
-    if cur_max_arranged_cards == len(hand):
+            arrangement, lengths = zip(*arrangement)
+            if arrangement in cur_max_arrangements:
+                continue
+            arrangement_length = sum(lengths)
+            if arrangement_length > len_hand or arrangement_length < cur_max_arranged_cards:
+                continue
+            if not equal_or_less_occurrences(hand, arrangement):
+                continue
+            if arrangement_length > cur_max_arranged_cards:
+                cur_max_arranged_cards = arrangement_length
+                cur_max_arrangements = [arrangement]
+            elif arrangement_length == cur_max_arranged_cards:
+                cur_max_arrangements.append(arrangement)
+    if cur_max_arranged_cards == len_hand:
         best_arrangement = cur_max_arrangements[0]
     else:
-        min_point_val = math.inf
-        best_arrangement = None
-        points = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 1]
-        for arrangement in cur_max_arrangements:
-            unarranged_cards = hand[:]
-            for seq in arrangement:
-                for card in seq:
-                    unarranged_cards.remove(card)
-            point_value = 0
-            for card in unarranged_cards:
-                point_value += points[RANKS.index(get_rank(card))]
-            if point_value < min_point_val:
-                min_point_val = point_value
-                best_arrangement = arrangement
-    assert best_arrangement is not None
-            
-    best_arrangements[(hand_t, wildcard_rank)] = best_arrangement
+        best_arrangement = get_min_penalty_arrangement(tuple(cur_max_arrangements), hand)
+
+    return best_arrangement
+
+def get_min_penalty_arrangement(cur_max_arrangements, hand):
+    min_point_val = math.inf
+    best_arrangement = None
+    points = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 1]
+    for arrangement in cur_max_arrangements:
+        unarranged_cards = list(hand)
+        for seq in arrangement:
+            for card in seq:
+                unarranged_cards.remove(card)
+        point_value = 0
+        for card in unarranged_cards:
+            point_value += points[RANKS.index(get_rank(card))]
+        if point_value < min_point_val:
+            min_point_val = point_value
+            best_arrangement = arrangement
     return best_arrangement
 
 if __name__ == "__main__": 
